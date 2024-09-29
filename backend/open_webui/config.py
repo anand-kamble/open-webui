@@ -1186,6 +1186,14 @@ RAG_WEB_SEARCH_CONCURRENT_REQUESTS = PersistentConfig(
     int(os.getenv("RAG_WEB_SEARCH_CONCURRENT_REQUESTS", "10")),
 )
 
+# PaperQA
+RAG_PAPERQA_ACTIVE = PersistentConfig(
+    "RAG_PAPERQA_ACTIVE",
+    "rag.paperqa.active",
+    bool(os.environ.get("RAG_PAPERQA_ACTIVE", "False").lower() == "true"),
+)
+
+
 
 ####################################
 # Transcribe

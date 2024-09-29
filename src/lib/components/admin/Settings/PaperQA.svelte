@@ -4,10 +4,10 @@
     const dispatch = createEventDispatcher();
 
     import { getBackendConfig } from '$lib/apis';
-    import {
-        getPaperQAConfig,
-        updatePaperQAConfig,
-    } from '$lib/apis/paperqa';
+    // import {
+    //     getPaperQAConfig,
+    //     updatePaperQAConfig,
+    // } from '$lib/apis/paperqa';
     import { config } from '$lib/stores';
 
     import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';

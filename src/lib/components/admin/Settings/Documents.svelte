@@ -25,6 +25,7 @@
 	import { toast } from 'svelte-sonner';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
+	import Switch from '$lib/components/common/Switch.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -60,6 +61,10 @@
 		k: 4,
 		hybrid: false
 	};
+
+	let paperqa_state = {
+		"active": false,
+	}
 
 	const scanHandler = async () => {
 		scanDirLoading = true;
@@ -189,6 +194,9 @@
 			content_extraction: {
 				engine: contentExtractionEngine,
 				tika_server_url: tikaServerUrl
+			},
+			paperqa: {
+				active: paperqa_state.active
 			}
 		});
 
@@ -284,8 +292,17 @@
 		<div class="flex flex-col gap-0.5">
 			<div class=" mb-0.5 text-sm font-medium">{$i18n.t('General Settings')}</div>
 
-			<div class="  flex w-full justify-between">
-				<div class=" self-center text-xs font-medium">
+			<div class="mb-2 ">
+				<div class="h-10 flex justify-between items-center text-xs">
+					<div class="text-lg font-medium">{$i18n.t('Use PapaerQA2')}</div>
+
+					<Switch bind:state={paperqa_state.active} />
+				</div>
+			</div>
+			<!-- <span>{paperqa_state.active ? "Setting below will be ineffective" : ""}</span> -->
+			<hr class="dark:border-gray-850" />
+			<div class="flex w-full justify-between">
+				<div class=" self-center text-xs font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">
 					{$i18n.t('Scan for documents from {{path}}', { path: 'DOCS_DIR (/data/docs)' })}
 				</div>
 
@@ -298,9 +315,9 @@
 						console.log('check');
 					}}
 					type="button"
-					disabled={scanDirLoading}
+					disabled={scanDirLoading || paperqa_state.active}
 				>
-					<div class="self-center font-medium">{$i18n.t('Scan')}</div>
+					<div class="self-center font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Scan')}</div>
 
 					{#if scanDirLoading}
 						<div class="ml-3 self-center">
@@ -337,12 +354,13 @@
 			</div>
 
 			<div class=" flex w-full justify-between">
-				<div class=" self-center text-xs font-medium">{$i18n.t('Embedding Model Engine')}</div>
+				<div class=" self-center text-xs font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Embedding Model Engine')}</div>
 				<div class="flex items-center relative">
 					<select
-						class="dark:bg-gray-900 w-fit pr-8 rounded px-2 p-1 text-xs bg-transparent outline-none text-right"
+						class="dark:bg-gray-900 w-fit pr-8 rounded px-2 p-1 text-xs bg-transparent outline-none text-right {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}"
 						bind:value={embeddingEngine}
 						placeholder="Select an embedding model engine"
+						disabled={paperqa_state.active}
 						on:change={(e) => {
 							if (e.target.value === 'ollama') {
 								embeddingModel = '';
@@ -398,7 +416,7 @@
 			{/if}
 
 			<div class=" flex w-full justify-between">
-				<div class=" self-center text-xs font-medium">{$i18n.t('Hybrid Search')}</div>
+				<div class=" self-center text-xs font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Hybrid Search')}</div>
 
 				<button
 					class="p-1 px-3 text-xs flex rounded transition"
@@ -406,6 +424,7 @@
 						toggleHybridSearch();
 					}}
 					type="button"
+					disabled={paperqa_state.active}
 				>
 					{#if querySettings.hybrid === true}
 						<span class="ml-2 self-center">{$i18n.t('On')}</span>
@@ -414,391 +433,403 @@
 					{/if}
 				</button>
 			</div>
-		</div>
 
-		<hr class="dark:border-gray-850" />
+			<hr class="dark:border-gray-850" />
 
-		<div class="space-y-2" />
-		<div>
-			<div class=" mb-2 text-sm font-medium">{$i18n.t('Embedding Model')}</div>
+			<div class="space-y-2" />
+			<div>
+				<div class=" mb-2 text-sm font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Embedding Model')}</div>
 
-			{#if embeddingEngine === 'ollama'}
-				<div class="flex w-full">
-					<div class="flex-1 mr-2">
-						<select
-							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-							bind:value={embeddingModel}
-							placeholder={$i18n.t('Select a model')}
-							required
-						>
-							{#if !embeddingModel}
-								<option value="" disabled selected>{$i18n.t('Select a model')}</option>
-							{/if}
-							{#each $models.filter((m) => m.id && m.ollama && !(m?.preset ?? false)) as model}
-								<option value={model.id} class="bg-gray-50 dark:bg-gray-700">{model.name}</option>
-							{/each}
-						</select>
+				{#if embeddingEngine === 'ollama'}
+					<div class="flex w-full">
+						<div class="flex-1 mr-2">
+							<select
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}"
+								bind:value={embeddingModel}
+								placeholder={$i18n.t('Select a model')}
+								required
+							>
+								{#if !embeddingModel}
+									<option value="" disabled selected>{$i18n.t('Select a model')}</option>
+								{/if}
+								{#each $models.filter((m) => m.id && m.ollama && !(m?.preset ?? false)) as model}
+									<option value={model.id} class="bg-gray-50 dark:bg-gray-700">{model.name}</option>
+								{/each}
+							</select>
+						</div>
 					</div>
-				</div>
-			{:else}
-				<div class="flex w-full">
-					<div class="flex-1 mr-2">
-						<input
-							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-							placeholder={$i18n.t('Set embedding model (e.g. {{model}})', {
-								model: embeddingModel.slice(-40)
-							})}
-							bind:value={embeddingModel}
-						/>
-					</div>
-
-					{#if embeddingEngine === ''}
-						<button
-							class="px-2.5 bg-gray-50 hover:bg-gray-200 text-gray-800 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-100 rounded-lg transition"
-							on:click={() => {
-								embeddingModelUpdateHandler();
-							}}
-							disabled={updateEmbeddingModelLoading}
-						>
-							{#if updateEmbeddingModelLoading}
-								<div class="self-center">
-									<svg
-										class=" w-4 h-4"
-										viewBox="0 0 24 24"
-										fill="currentColor"
-										xmlns="http://www.w3.org/2000/svg"
-									>
-										<style>
-											.spinner_ajPY {
-												transform-origin: center;
-												animation: spinner_AtaB 0.75s infinite linear;
-											}
-
-											@keyframes spinner_AtaB {
-												100% {
-													transform: rotate(360deg);
-												}
-											}
-										</style>
-										<path
-											d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z"
-											opacity=".25"
-										/>
-										<path
-											d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z"
-											class="spinner_ajPY"
-										/>
-									</svg>
-								</div>
-							{:else}
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 16 16"
-									fill="currentColor"
-									class="w-4 h-4"
-								>
-									<path
-										d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z"
-									/>
-									<path
-										d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z"
-									/>
-								</svg>
-							{/if}
-						</button>
-					{/if}
-				</div>
-			{/if}
-
-			<div class="mt-2 mb-1 text-xs text-gray-400 dark:text-gray-500">
-				{$i18n.t(
-					'Warning: If you update or change your embedding model, you will need to re-import all documents.'
-				)}
-			</div>
-
-			{#if querySettings.hybrid === true}
-				<div class=" ">
-					<div class=" mb-2 text-sm font-medium">{$i18n.t('Reranking Model')}</div>
-
+				{:else}
 					<div class="flex w-full">
 						<div class="flex-1 mr-2">
 							<input
-								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-								placeholder={$i18n.t('Set reranking model (e.g. {{model}})', {
-									model: 'BAAI/bge-reranker-v2-m3'
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}"
+								placeholder={$i18n.t('Set embedding model (e.g. {{model}})', {
+									model: embeddingModel.slice(-40)
 								})}
-								bind:value={rerankingModel}
+								disabled={paperqa_state.active}
+								bind:value={embeddingModel}
 							/>
 						</div>
-						<button
-							class="px-2.5 bg-gray-50 hover:bg-gray-200 text-gray-800 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-100 rounded-lg transition"
-							on:click={() => {
-								rerankingModelUpdateHandler();
-							}}
-							disabled={updateRerankingModelLoading}
-						>
-							{#if updateRerankingModelLoading}
-								<div class="self-center">
-									<svg
-										class=" w-4 h-4"
-										viewBox="0 0 24 24"
-										fill="currentColor"
-										xmlns="http://www.w3.org/2000/svg"
-									>
-										<style>
-											.spinner_ajPY {
-												transform-origin: center;
-												animation: spinner_AtaB 0.75s infinite linear;
-											}
 
-											@keyframes spinner_AtaB {
-												100% {
-													transform: rotate(360deg);
+						{#if embeddingEngine === ''}
+							<button
+								class="px-2.5 bg-gray-50 hover:bg-gray-200 text-gray-800 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-100 rounded-lg transition"
+								on:click={() => {
+									embeddingModelUpdateHandler();
+								}}
+								disabled={updateEmbeddingModelLoading || paperqa_state.active}
+							>
+								{#if updateEmbeddingModelLoading}
+									<div class="self-center">
+										<svg
+											class=" w-4 h-4"
+											viewBox="0 0 24 24"
+											fill="currentColor"
+											xmlns="http://www.w3.org/2000/svg"
+										>
+											<style>
+												.spinner_ajPY {
+													transform-origin: center;
+													animation: spinner_AtaB 0.75s infinite linear;
 												}
-											}
-										</style>
+
+												@keyframes spinner_AtaB {
+													100% {
+														transform: rotate(360deg);
+													}
+												}
+											</style>
+											<path
+												d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z"
+												opacity=".25"
+											/>
+											<path
+												d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z"
+												class="spinner_ajPY"
+											/>
+										</svg>
+									</div>
+								{:else}
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 16 16"
+										fill="currentColor"
+										class="w-4 h-4"
+									>
 										<path
-											d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z"
-											opacity=".25"
+											d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z"
 										/>
 										<path
-											d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z"
-											class="spinner_ajPY"
+											d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z"
 										/>
 									</svg>
-								</div>
-							{:else}
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 16 16"
-									fill="currentColor"
-									class="w-4 h-4"
-								>
-									<path
-										d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z"
-									/>
-									<path
-										d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z"
-									/>
-								</svg>
-							{/if}
-						</button>
+								{/if}
+							</button>
+						{/if}
 					</div>
-				</div>
-			{/if}
-		</div>
+				{/if}
 
-		<hr class=" dark:border-gray-850" />
-
-		<div class="">
-			<div class="text-sm font-medium">{$i18n.t('Content Extraction')}</div>
-
-			<div class="flex w-full justify-between mt-2">
-				<div class="self-center text-xs font-medium">{$i18n.t('Engine')}</div>
-				<div class="flex items-center relative">
-					<select
-						class="dark:bg-gray-900 w-fit pr-8 rounded px-2 p-1 text-xs bg-transparent outline-none text-right"
-						bind:value={contentExtractionEngine}
-						on:change={(e) => {
-							showTikaServerUrl = e.target.value === 'tika';
-						}}
-					>
-						<option value="">{$i18n.t('Default')} </option>
-						<option value="tika">{$i18n.t('Tika')}</option>
-					</select>
-				</div>
-			</div>
-
-			{#if showTikaServerUrl}
-				<div class="flex w-full mt-2">
-					<div class="flex-1 mr-2">
-						<input
-							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-							placeholder={$i18n.t('Enter Tika Server URL')}
-							bind:value={tikaServerUrl}
-						/>
-					</div>
-				</div>
-			{/if}
-		</div>
-
-		<hr class=" dark:border-gray-850" />
-
-		<div class="">
-			<div class="text-sm font-medium">{$i18n.t('Files')}</div>
-
-			<div class=" my-2 flex gap-1.5">
-				<div class="w-full">
-					<div class=" self-center text-xs font-medium min-w-fit mb-1">
-						{$i18n.t('Max Upload Size')}
-					</div>
-
-					<div class="self-center">
-						<Tooltip
-							content={$i18n.t(
-								'The maximum file size in MB. If the file size exceeds this limit, the file will not be uploaded.'
-							)}
-							placement="top-start"
-						>
-							<input
-								class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-								type="number"
-								placeholder={$i18n.t('Leave empty for unlimited')}
-								bind:value={fileMaxSize}
-								autocomplete="off"
-								min="0"
-							/>
-						</Tooltip>
-					</div>
-				</div>
-
-				<div class="  w-full">
-					<div class="self-center text-xs font-medium min-w-fit mb-1">
-						{$i18n.t('Max Upload Count')}
-					</div>
-					<div class="self-center">
-						<Tooltip
-							content={$i18n.t(
-								'The maximum number of files that can be used at once in chat. If the number of files exceeds this limit, the files will not be uploaded.'
-							)}
-							placement="top-start"
-						>
-							<input
-								class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-								type="number"
-								placeholder={$i18n.t('Leave empty for unlimited')}
-								bind:value={fileMaxCount}
-								autocomplete="off"
-								min="0"
-							/>
-						</Tooltip>
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<hr class=" dark:border-gray-850" />
-
-		<div class=" ">
-			<div class=" text-sm font-medium">{$i18n.t('Query Params')}</div>
-
-			<div class=" flex gap-1">
-				<div class="  flex w-full justify-between">
-					<div class="self-center text-xs font-medium min-w-fit">{$i18n.t('Top K')}</div>
-
-					<div class="self-center p-3">
-						<input
-							class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-							type="number"
-							placeholder={$i18n.t('Enter Top K')}
-							bind:value={querySettings.k}
-							autocomplete="off"
-							min="0"
-						/>
-					</div>
+				<div class="mt-2 mb-1 text-xs text-gray-400 dark:text-gray-500">
+					{$i18n.t(
+						'Warning: If you update or change your embedding model, you will need to re-import all documents.'
+					)}
 				</div>
 
 				{#if querySettings.hybrid === true}
-					<div class="  flex w-full justify-between">
-						<div class=" self-center text-xs font-medium min-w-fit">
-							{$i18n.t('Minimum Score')}
-						</div>
+					<div class=" ">
+						<div class=" mb-2 text-sm font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Reranking Model')}</div>
 
-						<div class="self-center p-3">
+						<div class="flex w-full">
+							<div class="flex-1 mr-2">
+								<input
+									class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+									placeholder={$i18n.t('Set reranking model (e.g. {{model}})', {
+										model: 'BAAI/bge-reranker-v2-m3'
+									})}
+									bind:value={rerankingModel}
+								/>
+							</div>
+							<button
+								class="px-2.5 bg-gray-50 hover:bg-gray-200 text-gray-800 dark:bg-gray-850 dark:hover:bg-gray-800 dark:text-gray-100 rounded-lg transition"
+								on:click={() => {
+									rerankingModelUpdateHandler();
+								}}
+								disabled={updateRerankingModelLoading}
+							>
+								{#if updateRerankingModelLoading}
+									<div class="self-center">
+										<svg
+											class=" w-4 h-4"
+											viewBox="0 0 24 24"
+											fill="currentColor"
+											xmlns="http://www.w3.org/2000/svg"
+										>
+											<style>
+												.spinner_ajPY {
+													transform-origin: center;
+													animation: spinner_AtaB 0.75s infinite linear;
+												}
+
+												@keyframes spinner_AtaB {
+													100% {
+														transform: rotate(360deg);
+													}
+												}
+											</style>
+											<path
+												d="M12,1A11,11,0,1,0,23,12,11,11,0,0,0,12,1Zm0,19a8,8,0,1,1,8-8A8,8,0,0,1,12,20Z"
+												opacity=".25"
+											/>
+											<path
+												d="M10.14,1.16a11,11,0,0,0-9,8.92A1.59,1.59,0,0,0,2.46,12,1.52,1.52,0,0,0,4.11,10.7a8,8,0,0,1,6.66-6.61A1.42,1.42,0,0,0,12,2.69h0A1.57,1.57,0,0,0,10.14,1.16Z"
+												class="spinner_ajPY"
+											/>
+										</svg>
+									</div>
+								{:else}
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 16 16"
+										fill="currentColor"
+										class="w-4 h-4"
+									>
+										<path
+											d="M8.75 2.75a.75.75 0 0 0-1.5 0v5.69L5.03 6.22a.75.75 0 0 0-1.06 1.06l3.5 3.5a.75.75 0 0 0 1.06 0l3.5-3.5a.75.75 0 0 0-1.06-1.06L8.75 8.44V2.75Z"
+										/>
+										<path
+											d="M3.5 9.75a.75.75 0 0 0-1.5 0v1.5A2.75 2.75 0 0 0 4.75 14h6.5A2.75 2.75 0 0 0 14 11.25v-1.5a.75.75 0 0 0-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5Z"
+										/>
+									</svg>
+								{/if}
+							</button>
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<hr class=" dark:border-gray-850" />
+
+			<div class="">
+				<div class="text-sm font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Content Extraction')}</div>
+
+				<div class="flex w-full justify-between mt-2">
+					<div class="self-center text-xs font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Engine')}</div>
+					<div class="flex items-center relative">
+						<select
+							class="dark:bg-gray-900 w-fit pr-8 rounded px-2 p-1 text-xs bg-transparent outline-none text-right"
+							bind:value={contentExtractionEngine}
+							disabled={paperqa_state.active}
+							on:change={(e) => {
+								showTikaServerUrl = e.target.value === 'tika';
+							}}
+						>
+							<option value="">{$i18n.t('Default')} </option>
+							<option value="tika">{$i18n.t('Tika')}</option>
+						</select>
+					</div>
+				</div>
+
+				{#if showTikaServerUrl}
+					<div class="flex w-full mt-2">
+						<div class="flex-1 mr-2">
 							<input
-								class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-								type="number"
-								step="0.01"
-								placeholder={$i18n.t('Enter Score')}
-								bind:value={querySettings.r}
-								autocomplete="off"
-								min="0.0"
-								title={$i18n.t('The score should be a value between 0.0 (0%) and 1.0 (100%).')}
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+								placeholder={$i18n.t('Enter Tika Server URL')}
+								bind:value={tikaServerUrl}
 							/>
 						</div>
 					</div>
 				{/if}
 			</div>
 
-			{#if querySettings.hybrid === true}
-				<div class="mt-2 mb-1 text-xs text-gray-400 dark:text-gray-500">
-					{$i18n.t(
-						'Note: If you set a minimum score, the search will only return documents with a score greater than or equal to the minimum score.'
-					)}
-				</div>
+			<hr class=" dark:border-gray-850" />
 
-				<hr class=" dark:border-gray-850 my-3" />
-			{/if}
+			<div class="">
+				<div class="text-sm font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Files')}</div>
 
-			<div>
-				<div class=" mb-2.5 text-sm font-medium">{$i18n.t('RAG Template')}</div>
-				<Tooltip
-					content={$i18n.t('Leave empty to use the default prompt, or enter a custom prompt')}
-					placement="top-start"
-				>
-					<textarea
-						bind:value={querySettings.template}
-						placeholder={$i18n.t('Leave empty to use the default prompt, or enter a custom prompt')}
-						class="w-full rounded-lg px-4 py-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none resize-none"
-						rows="4"
-					/>
-				</Tooltip>
-			</div>
-		</div>
+				<div class=" my-2 flex gap-1.5">
+					<div class="w-full">
+						<div class=" self-center text-xs font-medium min-w-fit mb-1 {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">
+							{$i18n.t('Max Upload Size')}
+						</div>
 
-		<hr class=" dark:border-gray-850" />
-
-		<div class=" ">
-			<div class=" text-sm font-medium">{$i18n.t('Chunk Params')}</div>
-
-			<div class=" my-2 flex gap-1.5">
-				<div class="  w-full justify-between">
-					<div class="self-center text-xs font-medium min-w-fit mb-1">{$i18n.t('Chunk Size')}</div>
-					<div class="self-center">
-						<input
-							class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-							type="number"
-							placeholder={$i18n.t('Enter Chunk Size')}
-							bind:value={chunkSize}
-							autocomplete="off"
-							min="0"
-						/>
-					</div>
-				</div>
-
-				<div class="w-full">
-					<div class=" self-center text-xs font-medium min-w-fit mb-1">
-						{$i18n.t('Chunk Overlap')}
+						<div class="self-center">
+							<Tooltip
+								content={$i18n.t(
+									'The maximum file size in MB. If the file size exceeds this limit, the file will not be uploaded.'
+								)}
+								placement="top-start"
+							>
+								<input
+									class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+									type="number"
+									placeholder={$i18n.t('Leave empty for unlimited')}
+									bind:value={fileMaxSize}
+									autocomplete="off"
+									min="0"
+									disabled={paperqa_state.active}
+								/>
+							</Tooltip>
+						</div>
 					</div>
 
-					<div class="self-center">
-						<input
-							class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
-							type="number"
-							placeholder={$i18n.t('Enter Chunk Overlap')}
-							bind:value={chunkOverlap}
-							autocomplete="off"
-							min="0"
-						/>
+					<div class="  w-full">
+						<div class="self-center text-xs font-medium min-w-fit mb-1 {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">
+							{$i18n.t('Max Upload Count')}
+						</div>
+						<div class="self-center">
+							<Tooltip
+								content={$i18n.t(
+									'The maximum number of files that can be used at once in chat. If the number of files exceeds this limit, the files will not be uploaded.'
+								)}
+								placement="top-start"
+							>
+								<input
+									class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+									type="number"
+									placeholder={$i18n.t('Leave empty for unlimited')}
+									bind:value={fileMaxCount}
+									autocomplete="off"
+									min="0"
+									disabled={paperqa_state.active}
+								/>
+							</Tooltip>
+						</div>
 					</div>
 				</div>
 			</div>
 
-			<div class="my-3">
-				<div class="flex justify-between items-center text-xs">
-					<div class=" text-xs font-medium">{$i18n.t('PDF Extract Images (OCR)')}</div>
+			<hr class=" dark:border-gray-850" />
 
-					<button
-						class=" text-xs font-medium text-gray-500"
-						type="button"
-						on:click={() => {
-							pdfExtractImages = !pdfExtractImages;
-						}}>{pdfExtractImages ? $i18n.t('On') : $i18n.t('Off')}</button
+			<div class=" ">
+				<div class=" text-sm font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Query Params')}</div>
+
+				<div class=" flex gap-1">
+					<div class="  flex w-full justify-between">
+						<div class="self-center text-xs font-medium min-w-fit {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Top K')}</div>
+
+						<div class="self-center p-3">
+							<input
+								class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+								type="number"
+								placeholder={$i18n.t('Enter Top K')}
+								bind:value={querySettings.k}
+								autocomplete="off"
+								min="0"
+								disabled={paperqa_state.active}
+							/>
+						</div>
+					</div>
+
+					{#if querySettings.hybrid === true}
+						<div class="  flex w-full justify-between">
+							<div class=" self-center text-xs font-medium min-w-fit">
+								{$i18n.t('Minimum Score')}
+							</div>
+
+							<div class="self-center p-3">
+								<input
+									class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+									type="number"
+									step="0.01"
+									placeholder={$i18n.t('Enter Score')}
+									bind:value={querySettings.r}
+									autocomplete="off"
+									min="0.0"
+									title={$i18n.t('The score should be a value between 0.0 (0%) and 1.0 (100%).')}
+									disabled={paperqa_state.active}
+								/>
+							</div>
+						</div>
+					{/if}
+				</div>
+
+				{#if querySettings.hybrid === true}
+					<div class="mt-2 mb-1 text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t(
+							'Note: If you set a minimum score, the search will only return documents with a score greater than or equal to the minimum score.'
+						)}
+					</div>
+
+					<hr class=" dark:border-gray-850 my-3" />
+				{/if}
+
+				<div>
+					<div class=" mb-2.5 text-sm font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('RAG Template')}</div>
+					<Tooltip
+						content={$i18n.t('Leave empty to use the default prompt, or enter a custom prompt')}
+						placement="top-start"
 					>
+						<textarea
+							bind:value={querySettings.template}
+							placeholder={$i18n.t(
+								'Leave empty to use the default prompt, or enter a custom prompt'
+							)}
+							class="w-full rounded-lg px-4 py-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none resize-none"
+							rows="4"
+							disabled={paperqa_state.active}
+						/>
+					</Tooltip>
+				</div>
+			</div>
+
+			<hr class=" dark:border-gray-850" />
+
+			<div class=" ">
+				<div class=" text-sm font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('Chunk Params')}</div>
+
+				<div class=" my-2 flex gap-1.5">
+					<div class="  w-full justify-between">
+						<div class="self-center text-xs font-medium min-w-fit mb-1 {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">
+							{$i18n.t('Chunk Size')}
+						</div>
+						<div class="self-center">
+							<input
+								class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Size')}
+								bind:value={chunkSize}
+								autocomplete="off"
+								min="0"
+								disabled={paperqa_state.active}
+							/>
+						</div>
+					</div>
+
+					<div class="w-full">
+						<div class=" self-center text-xs font-medium min-w-fit mb-1 {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">
+							{$i18n.t('Chunk Overlap')}
+						</div>
+
+						<div class="self-center">
+							<input
+								class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+								type="number"
+								placeholder={$i18n.t('Enter Chunk Overlap')}
+								bind:value={chunkOverlap}
+								autocomplete="off"
+								min="0"
+								disabled={paperqa_state.active}
+							/>
+						</div>
+					</div>
+				</div>
+
+				<div class="my-3">
+					<div class="flex justify-between items-center text-xs">
+						<div class=" text-xs font-medium {paperqa_state.active ? "text-gray-400 dark:text-gray-500": ""}">{$i18n.t('PDF Extract Images (OCR)')}</div>
+
+						<button
+							class=" text-xs font-medium text-gray-500"
+							type="button"
+							on:click={() => {
+								pdfExtractImages = !pdfExtractImages;
+							}}>{pdfExtractImages ? $i18n.t('On') : $i18n.t('Off')}</button
+						>
+					</div>
 				</div>
 			</div>
 		</div>
-
 		<hr class=" dark:border-gray-850" />
 
 		<div>

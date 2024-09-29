@@ -65,6 +65,7 @@ from open_webui.config import (
     RAG_FILE_MAX_SIZE,
     RAG_OPENAI_API_BASE_URL,
     RAG_OPENAI_API_KEY,
+    RAG_PAPERQA_ACTIVE,
     RAG_RELEVANCE_THRESHOLD,
     RAG_RERANKING_MODEL,
     RAG_RERANKING_MODEL_AUTO_UPDATE,
@@ -176,6 +177,7 @@ app.state.config.SEARCHAPI_API_KEY = SEARCHAPI_API_KEY
 app.state.config.SEARCHAPI_ENGINE = SEARCHAPI_ENGINE
 app.state.config.RAG_WEB_SEARCH_RESULT_COUNT = RAG_WEB_SEARCH_RESULT_COUNT
 app.state.config.RAG_WEB_SEARCH_CONCURRENT_REQUESTS = RAG_WEB_SEARCH_CONCURRENT_REQUESTS
+app.state.config.RAG_PAPERQA_ACTIVE = RAG_PAPERQA_ACTIVE
 
 
 def update_embedding_model(
@@ -244,7 +246,8 @@ def update_reranking_model(
                         )
 
                     # Transpose the query embeddings to align for matrix multiplication
-                    transposed_query_embeddings = query_embeddings.permute(0, 2, 1)
+                    transposed_query_embeddings = query_embeddings.permute(
+                        0, 2, 1)
                     # Compute similarity scores using batch matrix multiplication
                     computed_scores = torch.matmul(
                         document_embeddings, transposed_query_embeddings
@@ -267,7 +270,8 @@ def update_reranking_model(
                     # Embedding the documents
                     embedded_docs = self.ckpt.docFromText(docs, bsize=32)[0]
                     # Embedding the queries
-                    embedded_queries = self.ckpt.queryFromText([query], bsize=32)
+                    embedded_queries = self.ckpt.queryFromText(
+                        [query], bsize=32)
                     embedded_query = embedded_queries[0]
 
                     # Calculate retrieval scores for the query against all documents
@@ -556,6 +560,10 @@ class WebConfig(BaseModel):
     web_loader_ssl_verification: Optional[bool] = None
 
 
+class PaperQAConfig(BaseModel):
+    active: Optional[bool] = None
+
+
 class ConfigUpdateForm(BaseModel):
     pdf_extract_images: Optional[bool] = None
     file: Optional[FileConfig] = None
@@ -563,6 +571,7 @@ class ConfigUpdateForm(BaseModel):
     chunk: Optional[ChunkParamUpdateForm] = None
     youtube: Optional[YoutubeLoaderConfig] = None
     web: Optional[WebConfig] = None
+    paperqa: Optional[PaperQAConfig] = None
 
 
 @app.post("/config/update")
@@ -617,6 +626,9 @@ async def update_rag_config(form_data: ConfigUpdateForm, user=Depends(get_admin_
             form_data.web.search.concurrent_requests
         )
 
+    if form_data.paperqa is not None:
+        app.state.config.RAG_PAPERQA_ACTIVE = form_data.paperqa.active
+
     return {
         "status": True,
         "pdf_extract_images": app.state.config.PDF_EXTRACT_IMAGES,
@@ -656,6 +668,9 @@ async def update_rag_config(form_data: ConfigUpdateForm, user=Depends(get_admin_
                 "concurrent_requests": app.state.config.RAG_WEB_SEARCH_CONCURRENT_REQUESTS,
             },
         },
+        "paperqa": {
+            "active": app.state.config.RAG_PAPERQA_ACTIVE
+        }
     }
 
 
@@ -865,7 +880,8 @@ def validate_url(url: Union[str, Sequence[str]]):
             # Local web fetch is disabled, filter out any URLs that resolve to private IP addresses
             parsed_url = urllib.parse.urlparse(url)
             # Get IPv4 and IPv6 addresses
-            ipv4_addresses, ipv6_addresses = resolve_hostname(parsed_url.hostname)
+            ipv4_addresses, ipv6_addresses = resolve_hostname(
+                parsed_url.hostname)
             # Check if any of the resolved addresses are private
             # This is technically still vulnerable to DNS rebinding attacks, as we don't control WebBaseLoader
             for ip in ipv4_addresses:
@@ -886,8 +902,10 @@ def resolve_hostname(hostname):
     addr_info = socket.getaddrinfo(hostname, None)
 
     # Extract IP addresses from address information
-    ipv4_addresses = [info[4][0] for info in addr_info if info[0] == socket.AF_INET]
-    ipv6_addresses = [info[4][0] for info in addr_info if info[0] == socket.AF_INET6]
+    ipv4_addresses = [info[4][0]
+                      for info in addr_info if info[0] == socket.AF_INET]
+    ipv6_addresses = [info[4][0]
+                      for info in addr_info if info[0] == socket.AF_INET6]
 
     return ipv4_addresses, ipv6_addresses
 
@@ -917,7 +935,8 @@ def search_web(engine: str, query: str) -> list[SearchResult]:
                 app.state.config.RAG_WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No SEARXNG_QUERY_URL found in environment variables")
+            raise Exception(
+                "No SEARXNG_QUERY_URL found in environment variables")
     elif engine == "google_pse":
         if (
             app.state.config.GOOGLE_PSE_API_KEY
@@ -943,7 +962,8 @@ def search_web(engine: str, query: str) -> list[SearchResult]:
                 app.state.config.RAG_WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No BRAVE_SEARCH_API_KEY found in environment variables")
+            raise Exception(
+                "No BRAVE_SEARCH_API_KEY found in environment variables")
     elif engine == "serpstack":
         if app.state.config.SERPSTACK_API_KEY:
             return search_serpstack(
@@ -954,7 +974,8 @@ def search_web(engine: str, query: str) -> list[SearchResult]:
                 https_enabled=app.state.config.SERPSTACK_HTTPS,
             )
         else:
-            raise Exception("No SERPSTACK_API_KEY found in environment variables")
+            raise Exception(
+                "No SERPSTACK_API_KEY found in environment variables")
     elif engine == "serper":
         if app.state.config.SERPER_API_KEY:
             return search_serper(
@@ -1000,11 +1021,13 @@ def search_web(engine: str, query: str) -> list[SearchResult]:
                 app.state.config.RAG_WEB_SEARCH_DOMAIN_FILTER_LIST,
             )
         else:
-            raise Exception("No SEARCHAPI_API_KEY found in environment variables")
+            raise Exception(
+                "No SEARCHAPI_API_KEY found in environment variables")
     elif engine == "jina":
         return search_jina(query, app.state.config.RAG_WEB_SEARCH_RESULT_COUNT)
     else:
-        raise Exception("No search engine API key found in environment variables")
+        raise Exception(
+            "No search engine API key found in environment variables")
 
 
 @app.post("/web/search")
@@ -1084,7 +1107,8 @@ def store_docs_in_vector_db(
     log.info(f"store_docs_in_vector_db {docs} {collection_name}")
 
     texts = [doc.page_content for doc in docs]
-    metadatas = [{**doc.metadata, **(metadata if metadata else {})} for doc in docs]
+    metadatas = [
+        {**doc.metadata, **(metadata if metadata else {})} for doc in docs]
 
     # ChromaDB does not like datetime formats
     # for meta-data so convert them to string.
@@ -1097,7 +1121,8 @@ def store_docs_in_vector_db(
         if overwrite:
             if VECTOR_DB_CLIENT.has_collection(collection_name=collection_name):
                 log.info(f"deleting existing collection {collection_name}")
-                VECTOR_DB_CLIENT.delete_collection(collection_name=collection_name)
+                VECTOR_DB_CLIENT.delete_collection(
+                    collection_name=collection_name)
 
         if VECTOR_DB_CLIENT.has_collection(collection_name=collection_name):
             log.info(f"collection {collection_name} already exists")
@@ -1154,7 +1179,8 @@ class TikaLoader:
 
         if r.ok:
             raw_metadata = r.json()
-            text = raw_metadata.get("X-TIKA:content", "<No text content found>")
+            text = raw_metadata.get(
+                "X-TIKA:content", "<No text content found>")
 
             if "Content-Type" in raw_metadata:
                 headers["Content-Type"] = raw_metadata["Content-Type"]
@@ -1467,7 +1493,8 @@ def scan_docs_dir(user=Depends(get_admin_user)):
                                                 {
                                                     "tags": list(
                                                         map(
-                                                            lambda name: {"name": name},
+                                                            lambda name: {
+                                                                "name": name},
                                                             tags,
                                                         )
                                                     )
@@ -1558,7 +1585,8 @@ class SafeWebBaseLoader(WebBaseLoader):
                         "content", "No description found."
                     )
                 if html := soup.find("html"):
-                    metadata["language"] = html.get("lang", "No language found.")
+                    metadata["language"] = html.get(
+                        "lang", "No language found.")
 
                 yield Document(page_content=text, metadata=metadata)
             except Exception as e:
