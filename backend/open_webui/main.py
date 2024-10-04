@@ -17,6 +17,7 @@ import aiohttp
 import requests
 
 
+from open_webui.apps.paperqa.main import generate_paperqa_chat_completion
 from open_webui.apps.audio.main import app as audio_app
 from open_webui.apps.images.main import app as images_app
 from open_webui.apps.ollama.main import app as ollama_app
@@ -531,10 +532,13 @@ async def get_body_and_model_and_user(request):
 
 class ChatCompletionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        print("====================================")
         if not is_chat_completion_request(request):
             return await call_next(request)
         log.debug(f"request.url.path: {request.url.path}")
 
+        print("ChatCompletionMiddleware")
+        print("++++++++++++++++++++++++++++++++++++")
         try:
             body, model, user = await get_body_and_model_and_user(request)
         except Exception as e:
@@ -617,7 +621,7 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
 
             # Workaround for Ollama 2.0+ system prompt issue
             # TODO: replace with add_or_update_system_message
-            if model["owned_by"] == "ollama":
+            if model["owned_by"] == "ollama":                
                 body["messages"] = prepend_to_first_user_message_content(
                     rag_template(
                         rag_app.state.config.RAG_TEMPLATE, context_string, prompt
@@ -1063,6 +1067,13 @@ async def generate_chat_completions(form_data: dict, user=Depends(get_verified_u
     model = app.state.MODELS[model_id]
     if model.get("pipe"):
         return await generate_function_chat_completion(form_data, user=user)
+    
+    if rag_app.state.config.RAG_PAPERQA_ACTIVE:
+        form_data = convert_payload_openai_to_ollama(form_data)
+        form_data = GenerateChatCompletionForm(**form_data)
+        
+        response = generate_paperqa_chat_completion(form_data, user=user)
+    
     if model["owned_by"] == "ollama":
         # Using /ollama/api/chat endpoint
         form_data = convert_payload_openai_to_ollama(form_data)
