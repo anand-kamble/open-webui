@@ -250,6 +250,8 @@
 
 			fileMaxSize = res?.file.max_size ?? '';
 			fileMaxCount = res?.file.max_count ?? '';
+
+			paperqa_state.active = res.paperqa.active;
 		}
 	});
 </script>
