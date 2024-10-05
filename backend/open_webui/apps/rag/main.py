@@ -514,6 +514,9 @@ async def get_rag_config(user=Depends(get_admin_user)):
                 "concurrent_requests": app.state.config.RAG_WEB_SEARCH_CONCURRENT_REQUESTS,
             },
         },
+        "paperqa": {
+            "active": app.state.config.RAG_PAPERQA_ACTIVE
+        }
     }
 
 

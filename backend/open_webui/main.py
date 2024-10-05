@@ -17,7 +17,7 @@ import aiohttp
 import requests
 
 
-from open_webui.apps.paperqa.main import generate_paperqa_chat_completion
+from open_webui.apps.paperqa.main import app as paperqa_app
 from open_webui.apps.audio.main import app as audio_app
 from open_webui.apps.images.main import app as images_app
 from open_webui.apps.ollama.main import app as ollama_app
@@ -582,6 +582,9 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"detail": str(e)},
             )
+        
+        print("++++++++++++++++++++++++++++++++++++")
+        print("Exited after filter functions")
 
         metadata = {
             **metadata,
@@ -596,6 +599,9 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
             citations.extend(flags.get("citations", []))
         except Exception as e:
             log.exception(e)
+            
+        print("++++++++++++++++++++++++++++++++++++")
+        print("Exited after tools functions")
 
         try:
             body, flags = await chat_completion_files_handler(body)
@@ -603,6 +609,9 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
             citations.extend(flags.get("citations", []))
         except Exception as e:
             log.exception(e)
+            
+        print("++++++++++++++++++++++++++++++++++++")
+        print("Exited after files functions")
 
         # If context is not empty, insert it into the messages
         if len(contexts) > 0:
@@ -653,14 +662,23 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
         if not isinstance(response, StreamingResponse):
             return response
 
+        print("++++++++++++++++++++++++++++++++++++")
+        print("Exited after isinstance(response, StreamingResponse):")
+
         content_type = response.headers["Content-Type"]
         is_openai = "text/event-stream" in content_type
         is_ollama = "application/x-ndjson" in content_type
         if not is_openai and not is_ollama:
             return response
+    
+        print("++++++++++++++++++++++++++++++++++++")
+        print("Exited after is_openai and is_ollama")
 
         def wrap_item(item):
             return f"data: {item}\n\n" if is_openai else f"{item}\n"
+        
+        print("++++++++++++++++++++++++++++++++++++")
+        print("Exited after wrap_item(item)")
 
         async def stream_wrapper(original_generator, data_items):
             for item in data_items:
@@ -669,10 +687,15 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
             async for data in original_generator:
                 yield data
 
+        print("++++++++++++++++++++++++++++++++++++")
+        print("Exited after stream_wrapper(original_generator, data_items)")
+        print("returning StreamingResponse")
         return StreamingResponse(
             stream_wrapper(response.body_iterator, data_items),
             headers=dict(response.headers),
         )
+        
+        
 
     async def _receive(self, body: bytes):
         return {"type": "http.request", "body": body, "more_body": False}
@@ -866,6 +889,7 @@ async def inspect_websocket(request: Request, call_next):
 app.mount("/ws", socket_app)
 app.mount("/ollama", ollama_app)
 app.mount("/openai", openai_app)
+app.mount("/paperqa", paperqa_app)
 
 app.mount("/images/api/v1", images_app)
 app.mount("/audio/api/v1", audio_app)
@@ -1068,11 +1092,12 @@ async def generate_chat_completions(form_data: dict, user=Depends(get_verified_u
     if model.get("pipe"):
         return await generate_function_chat_completion(form_data, user=user)
     
-    if rag_app.state.config.RAG_PAPERQA_ACTIVE:
-        form_data = convert_payload_openai_to_ollama(form_data)
-        form_data = GenerateChatCompletionForm(**form_data)
+    # This part is generating the title for the chat.
+    # if rag_app.state.config.RAG_PAPERQA_ACTIVE:
+    #     form_data = convert_payload_openai_to_ollama(form_data)
+    #     form_data = GenerateChatCompletionForm(**form_data)
         
-        response = generate_paperqa_chat_completion(form_data, user=user)
+    #     response = generate_paperqa_chat_completion(form_data, user=user)
     
     if model["owned_by"] == "ollama":
         # Using /ollama/api/chat endpoint

@@ -1219,6 +1219,367 @@
 		return _response;
 	};
 
+	const sendPromptPaperQA = async (model, userPrompt, responseMessageId, _chatId) => {
+		let _response: string | null = null;
+
+		const responseMessage = history.messages[responseMessageId];
+		const userMessage = history.messages[responseMessage.parentId];
+
+		// Wait until history/message have been updated
+		await tick();
+
+		// Scroll down
+		scrollToBottom();
+
+		const messagesBody = [
+			params?.system || $settings.system || (responseMessage?.userContext ?? null)
+				? {
+						role: 'system',
+						content: `${promptTemplate(
+							params?.system ?? $settings?.system ?? '',
+							$user.name,
+							$settings?.userLocation
+								? await getAndUpdateUserLocation(localStorage.token)
+								: undefined
+						)}${
+							(responseMessage?.userContext ?? null)
+								? `\n\nUser Context:\n${responseMessage?.userContext ?? ''}`
+								: ''
+						}`
+					}
+				: undefined,
+			...createMessagesList(responseMessageId)
+		]
+			.filter((message) => message?.content?.trim())
+			.map((message) => {
+				// Prepare the base message object
+				const baseMessage = {
+					role: message.role,
+					content: message.content
+				};
+
+				// Extract and format image URLs if any exist
+				const imageUrls = message.files
+					?.filter((file) => file.type === 'image')
+					.map((file) => file.url.slice(file.url.indexOf(',') + 1));
+
+				// Add images array only if it contains elements
+				if (imageUrls && imageUrls.length > 0 && message.role === 'user') {
+					baseMessage.images = imageUrls;
+				}
+				return baseMessage;
+			});
+
+		let lastImageIndex = -1;
+
+		// Find the index of the last object with images
+		messagesBody.forEach((item, index) => {
+			if (item.images) {
+				lastImageIndex = index;
+			}
+		});
+
+		// Remove images from all but the last one
+		messagesBody.forEach((item, index) => {
+			if (index !== lastImageIndex) {
+				delete item.images;
+			}
+		});
+
+		let files = JSON.parse(JSON.stringify(chatFiles));
+		if (model?.info?.meta?.knowledge ?? false) {
+			// Only initialize and add status if knowledge exists
+			responseMessage.statusHistory = [
+				{
+					action: 'knowledge_search',
+					description: $i18n.t(`Searching Knowledge for "{{searchQuery}}"`, {
+						searchQuery: userMessage.content
+					}),
+					done: false
+				}
+			];
+			files.push(...model.info.meta.knowledge);
+			history.messages[responseMessageId] = responseMessage;
+		}
+		files.push(
+			...(userMessage?.files ?? []).filter((item) =>
+				['doc', 'file', 'collection'].includes(item.type)
+			),
+			...(responseMessage?.files ?? []).filter((item) => ['web_search_results'].includes(item.type))
+		);
+
+		scrollToBottom();
+
+		eventTarget.dispatchEvent(
+			new CustomEvent('chat:start', {
+				detail: {
+					id: responseMessageId
+				}
+			})
+		);
+
+		await tick();
+
+		const stream =
+			model?.info?.params?.stream_response ??
+			$settings?.params?.stream_response ??
+			params?.stream_response ??
+			true;
+		const [res, controller] = await generateChatCompletion(localStorage.token, {
+			stream: stream,
+			model: model.id,
+			messages: messagesBody,
+			options: {
+				...{ ...($settings?.params ?? {}), ...params },
+				stop:
+					(params?.stop ?? $settings?.params?.stop ?? undefined)
+						? (params?.stop.split(',').map((token) => token.trim()) ?? $settings.params.stop).map(
+								(str) => decodeURIComponent(JSON.parse('"' + str.replace(/\"/g, '\\"') + '"'))
+							)
+						: undefined,
+				num_predict: params?.max_tokens ?? $settings?.params?.max_tokens ?? undefined,
+				repeat_penalty:
+					params?.frequency_penalty ?? $settings?.params?.frequency_penalty ?? undefined
+			},
+			format: $settings.requestFormat ?? undefined,
+			keep_alive: $settings.keepAlive ?? undefined,
+			tool_ids: selectedToolIds.length > 0 ? selectedToolIds : undefined,
+			files: files.length > 0 ? files : undefined,
+			session_id: $socket?.id,
+			chat_id: $chatId,
+			id: responseMessageId
+		});
+
+		if (res && res.ok) {
+			if (!stream) {
+				const response = await res.json();
+				console.log(response);
+
+				responseMessage.content = response.message.content;
+				responseMessage.info = {
+					eval_count: response.eval_count,
+					eval_duration: response.eval_duration,
+					load_duration: response.load_duration,
+					prompt_eval_count: response.prompt_eval_count,
+					prompt_eval_duration: response.prompt_eval_duration,
+					total_duration: response.total_duration
+				};
+				responseMessage.done = true;
+			} else {
+				console.log('controller', controller);
+
+				const reader = res.body
+					.pipeThrough(new TextDecoderStream())
+					.pipeThrough(splitStream('\n'))
+					.getReader();
+
+				while (true) {
+					const { value, done } = await reader.read();
+					if (done || stopResponseFlag || _chatId !== $chatId) {
+						responseMessage.done = true;
+						history.messages[responseMessageId] = responseMessage;
+
+						if (stopResponseFlag) {
+							controller.abort('User: Stop Response');
+						}
+
+						_response = responseMessage.content;
+						break;
+					}
+
+					try {
+						let lines = value.split('\n');
+
+						for (const line of lines) {
+							if (line !== '') {
+								console.log(line);
+								let data = JSON.parse(line);
+
+								if ('citations' in data) {
+									responseMessage.citations = data.citations;
+									// Only remove status if it was initially set
+									if (model?.info?.meta?.knowledge ?? false) {
+										responseMessage.statusHistory = responseMessage.statusHistory.filter(
+											(status) => status.action !== 'knowledge_search'
+										);
+									}
+									continue;
+								}
+
+								if ('detail' in data) {
+									throw data;
+								}
+
+								if (data.done == false) {
+									if (responseMessage.content == '' && data.message.content == '\n') {
+										continue;
+									} else {
+										responseMessage.content += data.message.content;
+
+										if (navigator.vibrate && ($settings?.hapticFeedback ?? false)) {
+											navigator.vibrate(5);
+										}
+
+										const messageContentParts = getMessageContentParts(
+											responseMessage.content,
+											$config?.audio?.tts?.split_on ?? 'punctuation'
+										);
+										messageContentParts.pop();
+
+										// dispatch only last sentence and make sure it hasn't been dispatched before
+										if (
+											messageContentParts.length > 0 &&
+											messageContentParts[messageContentParts.length - 1] !==
+												responseMessage.lastSentence
+										) {
+											responseMessage.lastSentence =
+												messageContentParts[messageContentParts.length - 1];
+											eventTarget.dispatchEvent(
+												new CustomEvent('chat', {
+													detail: {
+														id: responseMessageId,
+														content: messageContentParts[messageContentParts.length - 1]
+													}
+												})
+											);
+										}
+
+										history.messages[responseMessageId] = responseMessage;
+									}
+								} else {
+									responseMessage.done = true;
+
+									if (responseMessage.content == '') {
+										responseMessage.error = {
+											code: 400,
+											content: `Oops! No text generated from Ollama, Please try again.`
+										};
+									}
+
+									responseMessage.context = data.context ?? null;
+									responseMessage.info = {
+										total_duration: data.total_duration,
+										load_duration: data.load_duration,
+										sample_count: data.sample_count,
+										sample_duration: data.sample_duration,
+										prompt_eval_count: data.prompt_eval_count,
+										prompt_eval_duration: data.prompt_eval_duration,
+										eval_count: data.eval_count,
+										eval_duration: data.eval_duration
+									};
+
+									history.messages[responseMessageId] = responseMessage;
+
+									if ($settings.notificationEnabled && !document.hasFocus()) {
+										const notification = new Notification(`${model.id}`, {
+											body: responseMessage.content,
+											icon: `${WEBUI_BASE_URL}/static/favicon.png`
+										});
+									}
+
+									if ($settings?.responseAutoCopy ?? false) {
+										copyToClipboard(responseMessage.content);
+									}
+
+									if ($settings.responseAutoPlayback && !$showCallOverlay) {
+										await tick();
+										document.getElementById(`speak-button-${responseMessage.id}`)?.click();
+									}
+								}
+							}
+						}
+					} catch (error) {
+						console.log(error);
+						if ('detail' in error) {
+							toast.error(error.detail);
+						}
+						break;
+					}
+
+					if (autoScroll) {
+						scrollToBottom();
+					}
+				}
+			}
+		} else {
+			if (res !== null) {
+				const error = await res.json();
+				console.log(error);
+				if ('detail' in error) {
+					toast.error(error.detail);
+					responseMessage.error = { content: error.detail };
+				} else {
+					toast.error(error.error);
+					responseMessage.error = { content: error.error };
+				}
+			} else {
+				toast.error(
+					$i18n.t(`Uh-oh! There was an issue connecting to {{provider}}.`, { provider: 'Ollama' })
+				);
+				responseMessage.error = {
+					content: $i18n.t(`Uh-oh! There was an issue connecting to {{provider}}.`, {
+						provider: 'Ollama'
+					})
+				};
+			}
+			responseMessage.done = true;
+
+			if (responseMessage.statusHistory) {
+				responseMessage.statusHistory = responseMessage.statusHistory.filter(
+					(status) => status.action !== 'knowledge_search'
+				);
+			}
+		}
+		await saveChatHandler(_chatId);
+
+		history.messages[responseMessageId] = responseMessage;
+
+		await chatCompletedHandler(
+			_chatId,
+			model.id,
+			responseMessageId,
+			createMessagesList(responseMessageId)
+		);
+
+		stopResponseFlag = false;
+		await tick();
+
+		let lastMessageContentPart =
+			getMessageContentParts(
+				responseMessage.content,
+				$config?.audio?.tts?.split_on ?? 'punctuation'
+			)?.at(-1) ?? '';
+		if (lastMessageContentPart) {
+			eventTarget.dispatchEvent(
+				new CustomEvent('chat', {
+					detail: { id: responseMessageId, content: lastMessageContentPart }
+				})
+			);
+		}
+
+		eventTarget.dispatchEvent(
+			new CustomEvent('chat:finish', {
+				detail: {
+					id: responseMessageId,
+					content: responseMessage.content
+				}
+			})
+		);
+
+		if (autoScroll) {
+			scrollToBottom();
+		}
+
+		const messages = createMessagesList(responseMessageId);
+		if (messages.length == 2 && messages.at(-1).content !== '' && selectedModels[0] === model.id) {
+			window.history.replaceState(history.state, '', `/c/${_chatId}`);
+			const title = await generateChatTitle(userPrompt);
+			await setChatTitle(_chatId, title);
+		}
+
+		return _response;
+	};
+
 	const sendPromptOpenAI = async (model, userPrompt, responseMessageId, _chatId) => {
 		let _response = null;
 
