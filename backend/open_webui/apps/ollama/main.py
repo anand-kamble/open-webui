@@ -152,7 +152,7 @@ async def post_streaming_url(
             headers={"Content-Type": "application/json"},
         )
         r.raise_for_status()
-
+        
         if stream:
             headers = dict(r.headers)
             if content_type:

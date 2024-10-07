@@ -1,16 +1,20 @@
 
+import json
 import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+import aiohttp
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from open_webui.apps.ollama.main import (GenerateChatCompletionForm,
-                                         get_ollama_url)
+                                         get_ollama_url, post_streaming_url)
 from open_webui.apps.webui.models.models import ModelModel, Models
-from open_webui.config import (CORS_ALLOW_ORIGIN, MODEL_FILTER_LIST,
-                               RAG_PAPERQA_TEMPERATURE, UPLOAD_DIR, AppConfig)
+from open_webui.config import (AIOHTTP_CLIENT_TIMEOUT, CORS_ALLOW_ORIGIN, ENABLE_MODEL_FILTER,
+                               MODEL_FILTER_LIST, RAG_PAPERQA_TEMPERATURE,
+                               UPLOAD_DIR, AppConfig)
 from open_webui.env import SRC_LOG_LEVELS
 from open_webui.utils.utils import get_verified_user
 from paperqa import Docs, Settings, ask
@@ -41,6 +45,8 @@ app.add_middleware(
 app.state.config = AppConfig()
 
 app.state.config.MODEL_FILTER_LIST = MODEL_FILTER_LIST
+app.state.config.ENABLE_MODEL_FILTER = ENABLE_MODEL_FILTER
+app.state.config.RAG_PAPERQA_TEMPERATURE = RAG_PAPERQA_TEMPERATURE
 
 
 def get_uploaded_files(directory: str) -> list[str]:
@@ -51,12 +57,13 @@ def get_uploaded_files(directory: str) -> list[str]:
         return []
 
 
-async def main(query:str) -> None:
+async def main(query: str) -> None:
     docs = Docs()
     uploaded_files: list[str] = get_uploaded_files("backend/data/uploads")
-    
+
     valid_extensions: set[str] = {".pdf", ".txt", ".html"}
-    uploaded_files = [file for file in uploaded_files if Path(file).suffix in valid_extensions]
+    uploaded_files = [file for file in uploaded_files if Path(
+        file).suffix in valid_extensions]
 
     local_llm_config: dict[str, list[dict[str, str | dict[str, str]]]] = {
         "model_list": [
@@ -89,14 +96,46 @@ async def main(query:str) -> None:
         query="Whos resume is this?",
         settings=settings
     )
+    
+async def cleanup_response(
+    response: Optional[aiohttp.ClientResponse],
+    session: Optional[aiohttp.ClientSession],
+):
+    if response:
+        response.close()
+    if session:
+        await session.close()
+        
+async def query_and_stream_response(query: str, settings: Settings):
+    docs = Docs()
+    uploaded_files = get_uploaded_files("backend/data/uploads")
+    
+    valid_extensions = {".pdf", ".txt", ".html"}
+    uploaded_files = [file for file in uploaded_files if Path(file).suffix in valid_extensions]
+
+    # Add documents to the PaperQA Docs instance
+    for doc in uploaded_files:
+        docs.add(Path("backend/data/uploads").joinpath(doc), settings=settings)
+    
+    # Stream the response from the PaperQA query
+    for partial_answer in docs.query(query=query, settings=settings):
+        yield json.dumps({"message": {"content": partial_answer}}) + "\n"
+
+async def json_streamer():
+    # Yield parts of the JSON response iteratively
+    yield json.dumps({"message": {"content": "Hello I am Anand"}, "done": False}) + "\n"
+    # Simulate more data streaming
+    yield json.dumps({"message": {"content": "This is the second part"}, "done": False}) + "\n"
+    # Finalize the response
+    yield json.dumps({"message": {"content": "Streaming complete"}, "done": True}) + "\n"
 
 
-@app.post("/chat/completion")
-def generate_paperqa_chat_completion(
+@app.post("/api/chat/")
+async def generate_paperqa_chat_completion(
     form_data: GenerateChatCompletionForm,
     url_idx: Optional[int] = None,
     user=Depends(get_verified_user),
-) -> dict[str, Any]:
+) -> StreamingResponse:
     payload: dict[str, Any] = {**form_data.model_dump(exclude_none=True)}
     log.debug(f"{payload = }")
 
@@ -124,11 +163,6 @@ def generate_paperqa_chat_completion(
             if payload.get("options") is None:
                 payload["options"] = {}
 
-            # payload["options"] = apply_model_params_to_body_ollama(
-            #     params, payload["options"]
-            # )
-            # payload = apply_model_system_prompt_to_body(params, payload, user)
-
     if ":" not in payload["model"]:
         payload["model"] = f"{payload['model']}:latest"
 
@@ -136,15 +170,27 @@ def generate_paperqa_chat_completion(
     log.info(f"url: {url}")
     log.debug(payload)
 
-    # return await post_streaming_url(
-#         f"{url}/api/chat",
-#         json.dumps(payload),
-#         stream=form_data.stream,
-#         content_type="application/x-ndjson",
-#     )
+    local_llm_config: dict[str, list[dict[str, str | dict[str, str]]]] = {
+        "model_list": [
+            {
+                "model_name": "ollama/llama3.2",
+                "litellm_params": {
+                    "model": "ollama/llama3.2",
+                    "api_base": "http://localhost:11434",
+                },
+            }
+        ]
+    }
+    settings = Settings(
+        llm="ollama/llama3.2",
+        llm_config=local_llm_config,
+        summary_llm="ollama/llama3.2",
+        summary_llm_config=local_llm_config,
+        temperature=0.2,
+        embedding="ollama/llama3.2",
+    )
+    return StreamingResponse(
+        json_streamer(),
+        media_type="application/json",
+    )
 
-    docs = Docs()
-
-    # return {"response": answer, "payload": payload}
-
-    return {"response": "Hello I am anand", "payload": payload}

@@ -32,7 +32,8 @@
 		temporaryChatEnabled,
 		mobile,
 		showOverview,
-		chatTitle
+		chatTitle,
+		paperqaSelected
 	} from '$lib/stores';
 	import {
 		convertMessagesToHistory,
@@ -43,7 +44,7 @@
 		splitStream
 	} from '$lib/utils';
 
-	import { generateChatCompletion } from '$lib/apis/ollama';
+	import { generateChatCompletion, generatePaperQAChatCompletion } from '$lib/apis/ollama';
 	import {
 		createNewChat,
 		getChatById,
@@ -836,13 +837,17 @@
 					if (webSearchEnabled) {
 						await getWebSearchResults(model.id, parentId, responseMessageId);
 					}
-
+					console.log($paperqaSelected, model)
 					let _response = null;
 					if (model?.owned_by === 'openai') {
 						_response = await sendPromptOpenAI(model, prompt, responseMessageId, _chatId);
-					} else if (model) {
-						_response = await sendPromptOllama(model, prompt, responseMessageId, _chatId);
+					} 
+					else if ($paperqaSelected && model) {
+						_response = await sendPromptPaperQA(model, prompt, responseMessageId, _chatId);
 					}
+					else if (model) {
+						_response = await sendPromptOllama(model, prompt, responseMessageId, _chatId);
+					} 
 					_responses.push(_response);
 
 					if (chatEventEmitter) clearInterval(chatEventEmitter);
@@ -1031,7 +1036,6 @@
 
 						for (const line of lines) {
 							if (line !== '') {
-								console.log(line);
 								let data = JSON.parse(line);
 
 								if ('citations' in data) {
@@ -1221,7 +1225,7 @@
 
 	const sendPromptPaperQA = async (model, userPrompt, responseMessageId, _chatId) => {
 		let _response: string | null = null;
-
+		console.log('sendPromptPaperQA', model, userPrompt, responseMessageId, _chatId);
 		const responseMessage = history.messages[responseMessageId];
 		const userMessage = history.messages[responseMessage.parentId];
 
@@ -1325,7 +1329,7 @@
 			$settings?.params?.stream_response ??
 			params?.stream_response ??
 			true;
-		const [res, controller] = await generateChatCompletion(localStorage.token, {
+		const [res, controller] = await generatePaperQAChatCompletion(localStorage.token, {
 			stream: stream,
 			model: model.id,
 			messages: messagesBody,
@@ -1349,11 +1353,10 @@
 			chat_id: $chatId,
 			id: responseMessageId
 		});
-
+		console.log('stream', stream);
 		if (res && res.ok) {
 			if (!stream) {
 				const response = await res.json();
-				console.log(response);
 
 				responseMessage.content = response.message.content;
 				responseMessage.info = {
@@ -1365,7 +1368,8 @@
 					total_duration: response.total_duration
 				};
 				responseMessage.done = true;
-			} else {
+			} 
+			else {
 				console.log('controller', controller);
 
 				const reader = res.body
@@ -1375,6 +1379,7 @@
 
 				while (true) {
 					const { value, done } = await reader.read();
+					console.log("value",value, "done",done);
 					if (done || stopResponseFlag || _chatId !== $chatId) {
 						responseMessage.done = true;
 						history.messages[responseMessageId] = responseMessage;
@@ -1386,15 +1391,12 @@
 						_response = responseMessage.content;
 						break;
 					}
-
 					try {
 						let lines = value.split('\n');
-
 						for (const line of lines) {
 							if (line !== '') {
-								console.log(line);
+								
 								let data = JSON.parse(line);
-
 								if ('citations' in data) {
 									responseMessage.citations = data.citations;
 									// Only remove status if it was initially set

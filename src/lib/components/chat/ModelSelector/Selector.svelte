@@ -12,7 +12,7 @@
 
 	import { deleteModel, getOllamaVersion, pullModel } from '$lib/apis/ollama';
 
-	import { user, MODEL_DOWNLOAD_POOL, models, mobile, temporaryChatEnabled } from '$lib/stores';
+	import { user, MODEL_DOWNLOAD_POOL, models, mobile, temporaryChatEnabled, paperqaSelected } from '$lib/stores';
 	import { toast } from 'svelte-sonner';
 	import { capitalizeFirstLetter, sanitizeResponseContent, splitStream } from '$lib/utils';
 	import { getModels } from '$lib/apis';
@@ -518,6 +518,24 @@
 						</div>
 					</div>
 				{/each}
+			</div>
+			<div class="flex items-center mx-2 my-2">
+				<button
+					class="flex justify-between w-full font-medium line-clamp-1 select-none items-center rounded-button py-2 px-3 text-sm text-gray-700 dark:text-gray-100 outline-none transition-all duration-75 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer data-[highlighted]:bg-muted"
+					on:click={async () => {
+						paperqaSelected.set(!$paperqaSelected);
+					}}
+				>
+					<div class="flex gap-2.5 items-center">
+						<ChatBubbleOval className="size-4" strokeWidth="2.5" />
+
+						{$i18n.t(`Use PaperQA2`)}
+					</div>
+
+					<div>
+						<Switch state={$paperqaSelected} />
+					</div>
+				</button>
 			</div>
 
 			{#if showTemporaryChatControl}
