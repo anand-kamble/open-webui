@@ -40,6 +40,7 @@ dependencies = [
     "anthropic",
     "google-generativeai==0.7.2",
     "tiktoken",
+    "paper-qa==5.0.10"
 
     "langchain==0.2.15",
     "langchain-community==0.2.12",

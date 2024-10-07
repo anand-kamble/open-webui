@@ -1324,8 +1324,6 @@
 
 		await tick();
 
-		console.log("files",files)
-
 		const stream =
 			model?.info?.params?.stream_response ??
 			$settings?.params?.stream_response ??
