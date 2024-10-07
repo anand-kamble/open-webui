@@ -323,6 +323,8 @@ export const generatePaperQAChatCompletion = async (token: string = '', body: ob
 	let controller = new AbortController();
 	let error = null;
 
+	console.log("body", body);
+
 	const res = await fetch(`${PAPERQA_API_BASE_URL}/api/chat`, {
 		signal: controller.signal,
 		method: 'POST',

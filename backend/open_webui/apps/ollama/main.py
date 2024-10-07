@@ -26,7 +26,7 @@ from open_webui.env import SRC_LOG_LEVELS
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, HttpUrl
 from starlette.background import BackgroundTask
 
 

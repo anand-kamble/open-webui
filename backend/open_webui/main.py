@@ -532,13 +532,10 @@ async def get_body_and_model_and_user(request):
 
 class ChatCompletionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        print("====================================")
         if not is_chat_completion_request(request):
             return await call_next(request)
         log.debug(f"request.url.path: {request.url.path}")
 
-        print("ChatCompletionMiddleware")
-        print("++++++++++++++++++++++++++++++++++++")
         try:
             body, model, user = await get_body_and_model_and_user(request)
         except Exception as e:
@@ -546,7 +543,6 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"detail": str(e)},
             )
-
         metadata = {
             "chat_id": body.pop("chat_id", None),
             "message_id": body.pop("id", None),
@@ -555,7 +551,6 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
             "files": body.get("files", None),
         }
         body["metadata"] = metadata
-
         extra_params = {
             "__event_emitter__": get_event_emitter(metadata),
             "__event_call__": get_event_call(metadata),
@@ -566,7 +561,6 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
                 "role": user.role,
             },
         }
-
         # Initialize data_items to store additional data to be sent to the client
         # Initalize contexts and citation
         data_items = []
@@ -583,8 +577,6 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
                 content={"detail": str(e)},
             )
         
-        print("++++++++++++++++++++++++++++++++++++")
-        print("Exited after filter functions")
 
         metadata = {
             **metadata,
@@ -599,9 +591,7 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
             citations.extend(flags.get("citations", []))
         except Exception as e:
             log.exception(e)
-            
-        print("++++++++++++++++++++++++++++++++++++")
-        print("Exited after tools functions")
+
 
         try:
             body, flags = await chat_completion_files_handler(body)
@@ -610,8 +600,7 @@ class ChatCompletionMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             log.exception(e)
             
-        print("++++++++++++++++++++++++++++++++++++")
-        print("Exited after files functions")
+
 
         # If context is not empty, insert it into the messages
         if len(contexts) > 0:

@@ -1324,6 +1324,8 @@
 
 		await tick();
 
+		console.log("files",files)
+
 		const stream =
 			model?.info?.params?.stream_response ??
 			$settings?.params?.stream_response ??
@@ -1353,7 +1355,6 @@
 			chat_id: $chatId,
 			id: responseMessageId
 		});
-		console.log('stream', stream);
 		if (res && res.ok) {
 			if (!stream) {
 				const response = await res.json();

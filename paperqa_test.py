@@ -1,6 +1,6 @@
 from pathlib import Path
 import re
-from paperqa import ask, Settings, Docs
+from paperqa import Answer, ask, Settings, Docs
 from paperqa.agents.models import AnswerResponse
 import asyncio
 import os
@@ -28,6 +28,7 @@ DEFAULT_SETTINGS = Settings(
     summary_llm_config=local_llm_config,
     temperature=0.2,
     embedding="ollama/llama3.2",
+    stream=True,
 )
 
 
@@ -54,13 +55,13 @@ async def main() -> None:
 
     print("Default settings: ", DEFAULT_SETTINGS)
     
-    answer = await docs.aquery(
+    answer: Answer = await docs.aquery(
         query="Whos resume is this?",
         settings=DEFAULT_SETTINGS
     )
     print("====================================")
-    print(answer)
-
+    print(answer.model_dump_json())
+    print("====================================")
 
 asyncio.run(main())
 

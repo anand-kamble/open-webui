@@ -3,21 +3,23 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+import time
+from typing import Any, Optional, TypedDict, Union
 
 import aiohttp
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from open_webui.apps.ollama.main import (GenerateChatCompletionForm,
-                                         get_ollama_url, post_streaming_url)
+from openai import files
+from open_webui.apps.ollama.main import ChatMessage, get_ollama_url
 from open_webui.apps.webui.models.models import ModelModel, Models
-from open_webui.config import (AIOHTTP_CLIENT_TIMEOUT, CORS_ALLOW_ORIGIN, ENABLE_MODEL_FILTER,
+from open_webui.config import (CORS_ALLOW_ORIGIN, ENABLE_MODEL_FILTER,
                                MODEL_FILTER_LIST, RAG_PAPERQA_TEMPERATURE,
                                UPLOAD_DIR, AppConfig)
 from open_webui.env import SRC_LOG_LEVELS
 from open_webui.utils.utils import get_verified_user
-from paperqa import Docs, Settings, ask
+from paperqa import Answer, Docs, Settings, ask
+from pydantic import HttpUrl, BaseModel
 
 """
 class GenerateChatCompletionForm(BaseModel):
@@ -29,6 +31,44 @@ class GenerateChatCompletionForm(BaseModel):
     stream: Optional[bool] = None
     keep_alive: Optional[Union[int, str]] = None
 """
+
+
+class FileMeta(BaseModel):
+    name: str
+    content_type: str
+    size: int
+    path: str
+
+
+class FileInfo(BaseModel):
+    created_at: int
+    filename: str
+    id: str
+    meta: FileMeta
+    user_id: str
+
+
+class FileResponse(BaseModel):
+    collection_name: str
+    error: str
+    file: FileInfo
+    id: str
+    name: str
+    size: int
+    status: str
+    type: str
+    url: HttpUrl
+
+
+class GenerateChatCompletionForm(BaseModel):
+    model: str
+    messages: list[ChatMessage]
+    format: Optional[str] = None
+    options: Optional[dict] = None
+    template: Optional[str] = None
+    stream: Optional[bool] = None
+    keep_alive: Optional[Union[int, str]] = None
+    files: Optional[list[FileResponse]] = None
 
 
 log: logging.Logger = logging.getLogger(__name__)
@@ -49,88 +89,113 @@ app.state.config.ENABLE_MODEL_FILTER = ENABLE_MODEL_FILTER
 app.state.config.RAG_PAPERQA_TEMPERATURE = RAG_PAPERQA_TEMPERATURE
 
 
-def get_uploaded_files(directory: str) -> list[str]:
-    try:
-        files: list[str] = os.listdir(Path((directory)))
-        return [file for file in files if os.path.isfile(os.path.join(directory, file))]
-    except FileNotFoundError:
-        return []
-
-
-async def main(query: str) -> None:
-    docs = Docs()
-    uploaded_files: list[str] = get_uploaded_files("backend/data/uploads")
-
-    valid_extensions: set[str] = {".pdf", ".txt", ".html"}
-    uploaded_files = [file for file in uploaded_files if Path(
-        file).suffix in valid_extensions]
-
-    local_llm_config: dict[str, list[dict[str, str | dict[str, str]]]] = {
-        "model_list": [
-            {
-                "model_name": "ollama/llama3.2",
-                "litellm_params": {
-                    "model": "ollama/llama3.2",
-                    "api_base": "http://localhost:11434",
-                },
-            }
-        ]
-    }
-    settings = Settings(
-        llm="ollama/llama3.2",
-        llm_config=local_llm_config,
-        summary_llm="ollama/llama3.2",
-        summary_llm_config=local_llm_config,
-        temperature=0.2,
-        embedding="ollama/llama3.2",
-    )
-
-    for doc in uploaded_files:
-        print("Adding doc: ", Path("backend/data/uploads").joinpath(doc))
-        await docs.aadd(Path("backend/data/uploads").joinpath(doc), settings=settings)
-        print("Added doc successfully: ", doc)
-
-    print("Default settings: ", settings)
-
-    answer = await docs.aquery(
-        query="Whos resume is this?",
-        settings=settings
-    )
-    
-async def cleanup_response(
-    response: Optional[aiohttp.ClientResponse],
-    session: Optional[aiohttp.ClientSession],
+async def paperqa_inference(
+    model: str, ollama_url: str, form_data: GenerateChatCompletionForm, temperature: Optional[float] = 0.2
 ):
-    if response:
-        response.close()
-    if session:
-        await session.close()
+
+    if not "ollama" in model:
+        model = f"ollama/{model}"
+
+    if form_data.files is not None:
+        chat_documents: list[str] = [
+            file.file.meta.path for file in form_data.files]
+        local_llm_config: dict[str, list[dict[str, str | dict[str, str | list[ChatMessage]]]]] = {
+            "model_list": [
+                {
+                    "model_name": model,
+                    "litellm_params": {
+                        "model": model,
+                        "api_base": ollama_url,
+                    },
+                }
+            ]
+        }
+
+        if form_data.messages:
+            local_llm_config["model_list"][0]["litellm_params"]["messages"] = form_data.messages
+
+        settings = Settings(
+            llm=model,
+            llm_config=local_llm_config,
+            summary_llm=model,
+            summary_llm_config=local_llm_config,
+            temperature=temperature,
+            embedding=model,
+        )
+
+        docs = Docs()
+        log.info("Starting PaperQA inference with uploaded files")
+
+        load_start_time = time.time()
+        for doc in chat_documents:
+            await docs.aadd(Path(doc), settings=settings)
+        load_end_time = time.time()
+
+        eval_start_time = time.time()
+        answer: Answer = await docs.aquery(
+            query="Whos resume is this?",
+            settings=settings
+        )
+        eval_end_time = time.time()
+        log.info("Completed PaperQA inference with uploaded files")
+
+        answer_dict: dict[str, Any] = answer.model_dump()
+
         
-async def query_and_stream_response(query: str, settings: Settings):
-    docs = Docs()
-    uploaded_files = get_uploaded_files("backend/data/uploads")
-    
-    valid_extensions = {".pdf", ".txt", ".html"}
-    uploaded_files = [file for file in uploaded_files if Path(file).suffix in valid_extensions]
 
-    # Add documents to the PaperQA Docs instance
-    for doc in uploaded_files:
-        docs.add(Path("backend/data/uploads").joinpath(doc), settings=settings)
-    
-    # Stream the response from the PaperQA query
-    for partial_answer in docs.query(query=query, settings=settings):
-        yield json.dumps({"message": {"content": partial_answer}}) + "\n"
+        citations = {
+            "document": [],
+            "metadata": [{
+                "file_id": str,
+                "Name": str,
+                "page": int,
+                "source": str,
+                "start_index": int
+            }],
+            "source": {
+                "collection_name": str,
+                "error": str,
+                "file": FileInfo,
+                "id": str,
+                "name": str,
+                "size": int,
+                "status": str,
+                "type": str,
+                "url": HttpUrl
+            }
+        }
 
-async def json_streamer():
-    # Yield parts of the JSON response iteratively
-    yield json.dumps({"message": {"content": "Hello I am Anand"}, "done": False}) + "\n"
-    # Simulate more data streaming
-    yield json.dumps({"message": {"content": "This is the second part"}, "done": False}) + "\n"
-    # Finalize the response
-    yield json.dumps({"message": {"content": "Streaming complete"}, "done": True}) + "\n"
+        contexts = answer_dict.get("contexts", [])
+        if contexts:
+            for context in contexts:
+                citations["document"].append(context["text"]["text"])
+                citations["metadata"].append({
+                    "file_id": context["text"]["doc"]["dockey"],
+                    "Name": context["text"]["doc"]["docname"],
+                    "page": 1,
+                    "source": context["text"]["doc"]["citation"],
+                    "start_index": 0
+                })
+
+        info: dict[str, int | float] = {
+            "eval_count": answer_dict["token_counts"][model][0],
+            "eval_duration": eval_end_time - eval_start_time * 1000,
+            "load_duration": load_end_time - load_start_time * 1000,
+            "prompt_eval_count": answer_dict["token_counts"][model][1],
+            "prompt_eval_duration": 0,
+            "total_duration": eval_end_time - load_start_time * 1000,
+        }
+        
+        
+        yield json.dumps({"message": {"content": answer_dict["answer"]},"context": answer_dict["context"], "info": info, "done": False}) + "\n"
+        
+        docs.clear_docs()
+        
+        yield json.dumps({"message": {"content": ""}, "context": answer_dict["context"], "info": info, "done": True}) + "\n"
 
 
 @app.post("/api/chat/")
+@app.post("/api/chat/{url_idx}")
 async def generate_paperqa_chat_completion(
     form_data: GenerateChatCompletionForm,
     url_idx: Optional[int] = None,
@@ -138,7 +203,7 @@ async def generate_paperqa_chat_completion(
 ) -> StreamingResponse:
     payload: dict[str, Any] = {**form_data.model_dump(exclude_none=True)}
     log.debug(f"{payload = }")
-
+    print("form_data: ", form_data)
     if "metadata" in payload:
         del payload["metadata"]
 
@@ -167,30 +232,12 @@ async def generate_paperqa_chat_completion(
         payload["model"] = f"{payload['model']}:latest"
 
     url = get_ollama_url(url_idx, payload["model"])
+
     log.info(f"url: {url}")
     log.debug(payload)
 
-    local_llm_config: dict[str, list[dict[str, str | dict[str, str]]]] = {
-        "model_list": [
-            {
-                "model_name": "ollama/llama3.2",
-                "litellm_params": {
-                    "model": "ollama/llama3.2",
-                    "api_base": "http://localhost:11434",
-                },
-            }
-        ]
-    }
-    settings = Settings(
-        llm="ollama/llama3.2",
-        llm_config=local_llm_config,
-        summary_llm="ollama/llama3.2",
-        summary_llm_config=local_llm_config,
-        temperature=0.2,
-        embedding="ollama/llama3.2",
-    )
     return StreamingResponse(
-        json_streamer(),
+        paperqa_inference(model=payload["model"],
+                          ollama_url=url, form_data=form_data),
         media_type="application/json",
     )
-
