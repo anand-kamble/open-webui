@@ -132,8 +132,10 @@ async def paperqa_inference(
         load_end_time = time.time()
 
         eval_start_time = time.time()
+                
+        current_query = form_data.messages[-1].content
         answer: Answer = await docs.aquery(
-            query="Whos resume is this?",
+            query=current_query,
             settings=settings
         )
         eval_end_time = time.time()
