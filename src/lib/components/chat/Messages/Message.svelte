@@ -66,6 +66,7 @@
 			/>
 		{:else if (history.messages[history.messages[messageId].parentId]?.models?.length ?? 1) === 1}
 			<ResponseMessage
+				{chatId}
 				{history}
 				{messageId}
 				isLastMessage={messageId === history.currentId}
@@ -76,6 +77,9 @@
 				{rateMessage}
 				{continueResponse}
 				{regenerateResponse}
+				on:submit={async (e) => {
+					dispatch('submit', e.detail);
+				}}
 				on:action={async (e) => {
 					dispatch('action', e.detail);
 				}}
@@ -106,6 +110,9 @@
 				{continueResponse}
 				{regenerateResponse}
 				{mergeResponses}
+				on:submit={async (e) => {
+					dispatch('submit', e.detail);
+				}}
 				on:action={async (e) => {
 					dispatch('action', e.detail);
 				}}

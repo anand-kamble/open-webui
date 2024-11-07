@@ -1,13 +1,12 @@
 <script lang="ts">
+	import { toast } from 'svelte-sonner';
+
 	import { onMount, getContext, createEventDispatcher } from 'svelte';
 
 	const dispatch = createEventDispatcher();
 
-	import { getDocs } from '$lib/apis/documents';
-	import { deleteAllFiles, deleteFileById } from '$lib/apis/files';
 	import {
 		getQuerySettings,
-		scanDocs,
 		updateQuerySettings,
 		resetVectorDB,
 		getEmbeddingConfig,
@@ -17,15 +16,19 @@
 		resetUploadDir,
 		getRAGConfig,
 		updateRAGConfig
-	} from '$lib/apis/rag';
+	} from '$lib/apis/retrieval';
+
+	import { knowledge, models } from '$lib/stores';
+	import { getKnowledgeItems } from '$lib/apis/knowledge';
+	import { uploadDir, deleteAllFiles, deleteFileById } from '$lib/apis/files';
+
 	import ResetUploadDirConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import ResetVectorDBConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
-
-	import { documents, models } from '$lib/stores';
-	import { toast } from 'svelte-sonner';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
+	import { text } from '@sveltejs/kit';
+	import Textarea from '$lib/components/common/Textarea.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -38,6 +41,7 @@
 
 	let embeddingEngine = '';
 	let embeddingModel = '';
+	let embeddingBatchSize = 1;
 	let rerankingModel = '';
 
 	let fileMaxSize = null;
@@ -47,13 +51,13 @@
 	let tikaServerUrl = '';
 	let showTikaServerUrl = false;
 
+	let textSplitter = '';
 	let chunkSize = 0;
 	let chunkOverlap = 0;
 	let pdfExtractImages = true;
 
 	let OpenAIKey = '';
 	let OpenAIUrl = '';
-	let OpenAIBatchSize = 1;
 
 	let querySettings = {
 		template: '',
@@ -115,12 +119,16 @@
 		const res = await updateEmbeddingConfig(localStorage.token, {
 			embedding_engine: embeddingEngine,
 			embedding_model: embeddingModel,
+			...(embeddingEngine === 'openai' || embeddingEngine === 'ollama'
+				? {
+						embedding_batch_size: embeddingBatchSize
+					}
+				: {}),
 			...(embeddingEngine === 'openai'
 				? {
 						openai_config: {
 							key: OpenAIKey,
-							url: OpenAIUrl,
-							batch_size: OpenAIBatchSize
+							url: OpenAIUrl
 						}
 					}
 				: {})
@@ -188,6 +196,7 @@
 				max_count: fileMaxCount === '' ? null : fileMaxCount
 			},
 			chunk: {
+				text_splitter: textSplitter,
 				chunk_overlap: chunkOverlap,
 				chunk_size: chunkSize
 			},
@@ -211,10 +220,10 @@
 		if (embeddingConfig) {
 			embeddingEngine = embeddingConfig.embedding_engine;
 			embeddingModel = embeddingConfig.embedding_model;
+			embeddingBatchSize = embeddingConfig.embedding_batch_size ?? 1;
 
 			OpenAIKey = embeddingConfig.openai_config.key;
 			OpenAIUrl = embeddingConfig.openai_config.url;
-			OpenAIBatchSize = embeddingConfig.openai_config.batch_size ?? 1;
 		}
 	};
 
@@ -236,11 +245,13 @@
 		await setRerankingConfig();
 
 		querySettings = await getQuerySettings(localStorage.token);
+
 		const res = await getRAGConfig(localStorage.token);
 
 		if (res) {
 			pdfExtractImages = res.pdf_extract_images;
 
+			textSplitter = res.chunk.text_splitter;
 			chunkSize = res.chunk.chunk_size;
 			chunkOverlap = res.chunk.chunk_overlap;
 
@@ -391,6 +402,8 @@
 
 					<SensitiveInput placeholder={$i18n.t('API Key')} bind:value={OpenAIKey} />
 				</div>
+			{/if}
+			{#if embeddingEngine === 'ollama' || embeddingEngine === 'openai'}
 				<div class="flex mt-0.5 space-x-2">
 					<div class=" self-center text-xs font-medium">{$i18n.t('Embedding Batch Size')}</div>
 					<div class=" flex-1">
@@ -400,13 +413,13 @@
 							min="1"
 							max="2048"
 							step="1"
-							bind:value={OpenAIBatchSize}
+							bind:value={embeddingBatchSize}
 							class="w-full h-2 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
 						/>
 					</div>
 					<div class="">
 						<input
-							bind:value={OpenAIBatchSize}
+							bind:value={embeddingBatchSize}
 							type="number"
 							class=" bg-transparent text-center w-14"
 							min="-2"
@@ -832,6 +845,62 @@
 				</div>
 			</div>
 		</div>
+
+		<hr class=" dark:border-gray-850" />
+
+		<div class="">
+			<div class="text-sm font-medium mb-1">{$i18n.t('Files')}</div>
+
+			<div class=" flex gap-1.5">
+				<div class="w-full">
+					<div class=" self-center text-xs font-medium min-w-fit mb-1">
+						{$i18n.t('Max Upload Size')}
+					</div>
+
+					<div class="self-center">
+						<Tooltip
+							content={$i18n.t(
+								'The maximum file size in MB. If the file size exceeds this limit, the file will not be uploaded.'
+							)}
+							placement="top-start"
+						>
+							<input
+								class="w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+								type="number"
+								placeholder={$i18n.t('Leave empty for unlimited')}
+								bind:value={fileMaxSize}
+								autocomplete="off"
+								min="0"
+							/>
+						</Tooltip>
+					</div>
+				</div>
+
+				<div class="  w-full">
+					<div class="self-center text-xs font-medium min-w-fit mb-1">
+						{$i18n.t('Max Upload Count')}
+					</div>
+					<div class="self-center">
+						<Tooltip
+							content={$i18n.t(
+								'The maximum number of files that can be used at once in chat. If the number of files exceeds this limit, the files will not be uploaded.'
+							)}
+							placement="top-start"
+						>
+							<input
+								class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+								type="number"
+								placeholder={$i18n.t('Leave empty for unlimited')}
+								bind:value={fileMaxCount}
+								autocomplete="off"
+								min="0"
+							/>
+						</Tooltip>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<hr class=" dark:border-gray-850" />
 
 		<div>
@@ -883,13 +952,15 @@
 						/>
 					</svg>
 				</div>
-				<div class=" self-center text-sm font-medium">{$i18n.t('Reset Vector Storage')}</div>
+				<div class=" self-center text-sm font-medium">
+					{$i18n.t('Reset Vector Storage/Knowledge')}
+				</div>
 			</button>
 		</div>
 	</div>
 	<div class="flex justify-end pt-3 text-sm font-medium">
 		<button
-			class=" px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-gray-100 transition rounded-lg"
+			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
 			type="submit"
 		>
 			{$i18n.t('Save')}

@@ -5,11 +5,11 @@
 	const dispatch = createEventDispatcher();
 
 	import Prompts from './Commands/Prompts.svelte';
-	import Documents from './Commands/Documents.svelte';
+	import Knowledge from './Commands/Knowledge.svelte';
 	import Models from './Commands/Models.svelte';
 
 	import { removeLastWordFromString } from '$lib/utils';
-	import { uploadWebToVectorDB, uploadYoutubeTranscriptionToVectorDB } from '$lib/apis/rag';
+	import { processWeb, processYoutubeVideo } from '$lib/apis/retrieval';
 
 	export let prompt = '';
 	export let files = [];
@@ -25,87 +25,36 @@
 	};
 
 	let command = '';
-	$: command = (prompt?.trim() ?? '').split(' ')?.at(-1) ?? '';
-
-	const uploadWeb = async (url) => {
-		console.log(url);
-
-		const doc = {
-			type: 'doc',
-			name: url,
-			collection_name: '',
-			status: false,
-			url: url,
-			error: ''
-		};
-
-		try {
-			files = [...files, doc];
-			const res = await uploadWebToVectorDB(localStorage.token, '', url);
-
-			if (res) {
-				doc.status = 'processed';
-				doc.collection_name = res.collection_name;
-				files = files;
-			}
-		} catch (e) {
-			// Remove the failed doc from the files array
-			files = files.filter((f) => f.name !== url);
-			toast.error(e);
-		}
-	};
-
-	const uploadYoutubeTranscription = async (url) => {
-		console.log(url);
-
-		const doc = {
-			type: 'doc',
-			name: url,
-			collection_name: '',
-			status: false,
-			url: url,
-			error: ''
-		};
-
-		try {
-			files = [...files, doc];
-			const res = await uploadYoutubeTranscriptionToVectorDB(localStorage.token, url);
-
-			if (res) {
-				doc.status = 'processed';
-				doc.collection_name = res.collection_name;
-				files = files;
-			}
-		} catch (e) {
-			// Remove the failed doc from the files array
-			files = files.filter((f) => f.name !== url);
-			toast.error(e);
-		}
-	};
+	$: command = prompt?.split('\n').pop()?.split(' ')?.pop() ?? '';
 </script>
 
-{#if ['/', '#', '@'].includes(command?.charAt(0))}
+{#if ['/', '#', '@'].includes(command?.charAt(0)) || '\\#' === command.slice(0, 2)}
 	{#if command?.charAt(0) === '/'}
 		<Prompts bind:this={commandElement} bind:prompt bind:files {command} />
-	{:else if command?.charAt(0) === '#'}
-		<Documents
+	{:else if (command?.charAt(0) === '#' && command.startsWith('#') && !command.includes('# ')) || ('\\#' === command.slice(0, 2) && command.startsWith('#') && !command.includes('# '))}
+		<Knowledge
 			bind:this={commandElement}
 			bind:prompt
-			{command}
+			command={command.includes('\\#') ? command.slice(2) : command}
 			on:youtube={(e) => {
 				console.log(e);
-				uploadYoutubeTranscription(e.detail);
+				dispatch('upload', {
+					type: 'youtube',
+					data: e.detail
+				});
 			}}
 			on:url={(e) => {
 				console.log(e);
-				uploadWeb(e.detail);
+				dispatch('upload', {
+					type: 'web',
+					data: e.detail
+				});
 			}}
 			on:select={(e) => {
 				console.log(e);
 				files = [
 					...files,
 					{
-						type: e?.detail?.type ?? 'file',
 						...e.detail,
 						status: 'processed'
 					}
