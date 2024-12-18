@@ -197,6 +197,15 @@ CHANGELOG = changelog_json
 SAFE_MODE = os.environ.get("SAFE_MODE", "false").lower() == "true"
 
 ####################################
+# ENABLE_FORWARD_USER_INFO_HEADERS
+####################################
+
+ENABLE_FORWARD_USER_INFO_HEADERS = (
+    os.environ.get("ENABLE_FORWARD_USER_INFO_HEADERS", "False").lower() == "true"
+)
+
+
+####################################
 # WEBUI_BUILD_HASH
 ####################################
 
@@ -321,6 +330,9 @@ WEBUI_AUTH_TRUSTED_EMAIL_HEADER = os.environ.get(
 )
 WEBUI_AUTH_TRUSTED_NAME_HEADER = os.environ.get("WEBUI_AUTH_TRUSTED_NAME_HEADER", None)
 
+BYPASS_MODEL_ACCESS_CONTROL = (
+    os.environ.get("BYPASS_MODEL_ACCESS_CONTROL", "False").lower() == "true"
+)
 
 ####################################
 # WEBUI_SECRET_KEY
@@ -365,7 +377,7 @@ else:
         AIOHTTP_CLIENT_TIMEOUT = 300
 
 AIOHTTP_CLIENT_TIMEOUT_OPENAI_MODEL_LIST = os.environ.get(
-    "AIOHTTP_CLIENT_TIMEOUT_OPENAI_MODEL_LIST", "3"
+    "AIOHTTP_CLIENT_TIMEOUT_OPENAI_MODEL_LIST", "5"
 )
 
 if AIOHTTP_CLIENT_TIMEOUT_OPENAI_MODEL_LIST == "":
@@ -376,7 +388,7 @@ else:
             AIOHTTP_CLIENT_TIMEOUT_OPENAI_MODEL_LIST
         )
     except Exception:
-        AIOHTTP_CLIENT_TIMEOUT_OPENAI_MODEL_LIST = 3
+        AIOHTTP_CLIENT_TIMEOUT_OPENAI_MODEL_LIST = 5
 
 ####################################
 # OFFLINE_MODE
